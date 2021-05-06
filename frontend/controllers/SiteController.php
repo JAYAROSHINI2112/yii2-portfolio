@@ -1,25 +1,31 @@
 <?php
+
 namespace frontend\controllers;
 
 use frontend\models\ResendVerificationEmailForm;
 use frontend\models\VerifyEmailForm;
 use Yii;
 use yii\base\InvalidArgumentException;
+use yii\data\ActiveDataProvider;
 use yii\web\BadRequestHttpException;
 use yii\web\Controller;
 use yii\filters\VerbFilter;
 use yii\filters\AccessControl;
 use common\models\LoginForm;
+use common\models\Theme;
 use frontend\models\PasswordResetRequestForm;
 use frontend\models\ResetPasswordForm;
 use frontend\models\SignupForm;
 use frontend\models\ContactForm;
-
 /**
  * Site controller
  */
 class SiteController extends Controller
 {
+    // Having it here changes for all the actions
+    // inside this Controller.
+    public $layout = 'guest/main.php';
+
     /**
      * {@inheritdoc}
      */
@@ -31,12 +37,18 @@ class SiteController extends Controller
                 'only' => ['logout', 'signup'],
                 'rules' => [
                     [
-                        'actions' => ['signup'],
+                        'actions' => [
+                            'signup',
+                            'login',
+                            'error',
+                            'about',
+                            'contact'
+                        ],
                         'allow' => true,
                         'roles' => ['?'],
                     ],
                     [
-                        'actions' => ['logout'],
+                        'actions' => ['logout', 'dashboard'],
                         'allow' => true,
                         'roles' => ['@'],
                     ],
@@ -74,7 +86,34 @@ class SiteController extends Controller
      */
     public function actionIndex()
     {
+        if (Yii::$app->user->identity !== NULL)
+            return $this->redirect(\yii\helpers\Url::to(['/site/dashboard']));
         return $this->render('index');
+    }
+
+    public function checkThemeSelected() {
+        $theme = new ActiveDataProvider([
+            'query' => Theme::find()->where(['created_by' => Yii::$app->user->identity->id]),
+        ]);
+        $themeCount = $theme->getTotalCount();
+
+        if($themeCount > 0) // if satisfied, default theme has been choosen
+            return TRUE;
+        return FALSE;
+    }
+
+    public function actionDashboard()
+    {
+        $this->layout = 'normal/main.php';
+        if (Yii::$app->user->identity !== NULL) {
+            if(!$this->checkThemeSelected()) {
+                $theme = new Theme();
+                $theme->theme_chosen = 1;
+                $theme->save();
+            }
+            return $this->render('dashboard');
+        }
+        return $this->redirect(\yii\helpers\Url::to(['/site/login']));
     }
 
     /**
@@ -90,7 +129,7 @@ class SiteController extends Controller
 
         $model = new LoginForm();
         if ($model->load(Yii::$app->request->post()) && $model->login()) {
-            return $this->goBack();
+            return $this->redirect(\yii\helpers\Url::to(['/site/dashboard']));
         } else {
             $model->password = '';
 
@@ -154,8 +193,8 @@ class SiteController extends Controller
     {
         $model = new SignupForm();
         if ($model->load(Yii::$app->request->post()) && $model->signup()) {
-            Yii::$app->session->setFlash('success', 'Thank you for registration. Please check your inbox for verification email.');
-            return $this->goHome();
+            // Yii::$app->session->setFlash('success', 'Thank you for registration. Please check your inbox for verification email.');
+            return $this->redirect(\yii\helpers\Url::to(['/site/login']));
         }
 
         return $this->render('signup', [
